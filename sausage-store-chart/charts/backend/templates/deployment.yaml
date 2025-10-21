@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sausage-backend.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "sausage-backend.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  revisionHistoryLimit: {{ .Values.deployment.revisionHistoryLimit }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ .Values.deployment.strategy.maxUnavailable }}
+      maxSurge: {{ .Values.deployment.strategy.maxSurge }}
+  selector:
+    matchLabels:
+      {{- include "sausage-backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sausage-backend.selectorLabels" . | nindent 8 }}
+      annotations:
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8080"
+        prometheus.io/scrape: "true"
+    spec:
+      containers:
+      - name: backend
+        image: "{{ .Values.backend.image.repository }}:{{ .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+        env:
+        # Статические переменные из values.yaml
+        {{- range .Values.backend.env }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+        {{- end }}
+        # PostgreSQL
+        - name: SPRING_DATASOURCE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "sausage-backend.fullname" . }}-db
+              key: spring-datasource-url
+        - name: SPRING_DATASOURCE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "sausage-backend.fullname" . }}-db
+              key: postgres-user
+        - name: SPRING_DATASOURCE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "sausage-backend.fullname" . }}-db
+              key: postgres-password
+        # MongoDB
+        - name: MONGO_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "sausage-backend.fullname" . }}-db
+              key: mongo-user
+        - name: MONGO_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "sausage-backend.fullname" . }}-db
+              key: mongo-password
+        - name: MONGO_HOST
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "sausage-backend.fullname" . }}-db
+              key: mongo-host
+        - name: MONGO_DBNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "sausage-backend.fullname" . }}-db
+              key: mongo-dbname
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.targetPort }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 2
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 2
+          failureThreshold: 6
+        resources:
+          {{- toYaml .Values.backend.resources | nindent 10 }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}

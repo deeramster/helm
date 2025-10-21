@@ -1,0 +1,28 @@
+{{- if .Values.vpa.enabled }}
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: {{ include "sausage-backend.fullname" . }}-vpa
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "sausage-backend.labels" . | nindent 4 }}
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "sausage-backend.fullname" . }}
+  updatePolicy:
+    updateMode: {{ .Values.vpa.updateMode }}
+  resourcePolicy:
+    containerPolicies:
+    - containerName: backend
+      controlledResources:
+        - cpu
+        - memory
+      minAllowed:
+        cpu: {{ .Values.vpa.minAllowed.cpu }}
+        memory: {{ .Values.vpa.minAllowed.memory }}
+      maxAllowed:
+        cpu: {{ .Values.vpa.maxAllowed.cpu }}
+        memory: {{ .Values.vpa.maxAllowed.memory }}
+{{- end }}

@@ -1,0 +1,55 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+  namespace: std-ext-010-34
+spec:
+  revisionHistoryLimit: 12
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 20%
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: "SPRING_DATASOURCE_URL"
+              value: "${SPRING_DATASOURCE_URL}"
+            - name: "SPRING_DATASOURCE_USERNAME"
+              value: "${PSQLUSER}"
+            - name: "SPRING_DATASOURCE_PASSWORD"
+              value: "${PSQLPASSWORD}"
+            - name: "MONGO_USER"
+              value: "${MONGO_USER}"
+            - name: "MONGO_PASSWORD"
+              value: "${MONGO_PASSWORD}"
+            - name: "MONGO_HOST"
+              value: "${MONGO_HOST}"
+            - name: "MONGO_DBNAME"
+              value: "${MONGO_DBNAME}"
+            - name: "REPORT_PATH"
+              value: "/var/www-data/htdocs"
+          image: ${CI_REGISTRY_IMAGE}/sausage-backend:${VERSION}
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      imagePullSecrets:
+        - name: docker-config-secret

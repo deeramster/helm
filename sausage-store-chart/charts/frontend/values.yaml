@@ -1,0 +1,53 @@
+# Default values for frontend
+image:
+  repository: "" # Будет передано из CI/CD
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Настройки сервиса
+service:
+  type: NodePort
+  port: 80
+  targetPort: 80
+  nodePort: 30080
+
+# Настройки ingress
+ingress:
+  enabled: true
+  className: "nginx"
+  host: "alimov-iskander-34.k8s.praktikum-services.tech"
+  tls: true
+
+# Настройки certificate
+certificate:
+  enabled: true
+
+# Конфигурация nginx
+nginxConfig: |
+  server {
+    listen 80;
+
+    location / {
+      root   /usr/share/nginx/html;
+      index  index.html;
+      try_files $uri $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://sausage-backend:8080;
+    }
+  }
+
+# Docker registry secret
+imagePullSecrets:
+  - name: docker-config-secret

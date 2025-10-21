@@ -1,0 +1,55 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-report
+  labels:
+    app: backend-report
+  namespace: std-ext-010-34
+spec:
+  replicas: 2
+  revisionHistoryLimit: 12
+  selector:
+    matchLabels:
+      app: backend-report
+  template:
+    metadata:
+      labels:
+        app: backend-report
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - backend-report
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: backend-report
+          env:
+            - name: "VERSION"
+              value: "${VERSION}"
+            - name: "PORT"
+              value: "8080"
+            - name: "REPORTS_MONGODB_URI"
+              value: "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:27018/${MONGO_DBNAME}?tls=true&tlsInsecure=true"
+            - name: "DB"
+              value: "$DB"
+          image: ${CI_REGISTRY_IMAGE}/sausage-backend-report:${VERSION}
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      imagePullSecrets:
+        - name: docker-config-secret

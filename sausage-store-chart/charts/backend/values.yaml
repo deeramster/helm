@@ -1,0 +1,56 @@
+backend:
+  image:
+    repository: "" # Будет передано из CI/CD
+    pullPolicy: IfNotPresent
+
+  replicas: 1
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Переменные окружения
+  env:
+    - name: REPORT_PATH
+      value: "/var/www-data/htdocs"
+
+  # Секреты для подключения к БД (передаются из CI/CD)
+  secrets:
+    springDatasourceUrl: ""
+    postgresUser: ""
+    postgresPassword: ""
+    mongoUser: ""
+    mongoPassword: ""
+    mongoHost: ""
+    mongoDbName: ""
+
+service:
+  type: NodePort
+  port: 8080
+  targetPort: 8080
+  nodePort: 30081
+
+vpa:
+  enabled: true
+  updateMode: "Off"
+  minAllowed:
+    cpu: 50m
+    memory: 64Mi
+  maxAllowed:
+    cpu: 1000m
+    memory: 1Gi
+
+# Настройки деплоя
+deployment:
+  revisionHistoryLimit: 12
+  strategy:
+    maxUnavailable: 0
+    maxSurge: 20%
+
+# Docker registry secret
+imagePullSecrets:
+  - name: docker-config-secret
