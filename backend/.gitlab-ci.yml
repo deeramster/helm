@@ -15,7 +15,7 @@ stages:
   - deploy
   - notify
 
-build:
+build-backend:
   stage: build
   image:
     name: gcr.io/kaniko-project/executor:v1.9.0-debug
@@ -27,10 +27,14 @@ build:
       --destination "${CI_REGISTRY_IMAGE}/sausage-backend:$CI_COMMIT_SHA"
       --build-arg VERSION=$VERSION
       --cache=true
+  only:
+    changes:
+      - backend/**/*
 
 sonarqube-backend-sast:
   stage: test
   image: maven:3.8-openjdk-16
+  needs: ["build-backend"]
   variables:
     SPRING_FLYWAY_ENABLED: false
     SONAR_USER_HOME: "${CI_PROJECT_DIR}/.m2/repository"
@@ -51,16 +55,22 @@ sonarqube-backend-sast:
       -Dspring.datasource.username=sa
       -Dspring.datasource.password=${TEST_PASS}
   allow_failure: true
+  only:
+    changes:
+      - backend/**/*
 
 gitlab-sast:
   stage: test
   needs:
-    - build
+    - build-backend
   trigger:
     include:
       - template: Security/SAST.gitlab-ci.yml
+  only:
+    changes:
+      - backend/**/*
 
-release:
+release-backend:
   variables:
     GIT_STRATEGY: none
   image:
@@ -71,11 +81,15 @@ release:
     - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - crane tag $CI_REGISTRY_IMAGE/sausage-backend:$CI_COMMIT_SHA $VERSION
+  needs: ["build-backend"]
+  only:
+    changes:
+      - backend/**/*
 
-package-and-upload-chart:
+package-and-upload-backend:
   stage: package-chart
   image: alpine/helm:latest
-  needs: ["release"]
+  needs: ["release-backend"]
   before_script:
     - apk add --no-cache curl gettext yq
   script:
@@ -86,39 +100,33 @@ package-and-upload-chart:
       yq eval ".version = \"$VERSION\"" -i ${CHART_DIR}/charts/backend/Chart.yaml
       yq eval ".appVersion = \"$VERSION\"" -i ${CHART_DIR}/charts/backend/Chart.yaml
       
-      # Обновляем версии в корневом Chart.yaml
-      yq eval ".version = \"$VERSION\"" -i ${CHART_DIR}/Chart.yaml
-      yq eval ".appVersion = \"$VERSION\"" -i ${CHART_DIR}/Chart.yaml
-      yq eval '.dependencies[0].version = "'$VERSION'"' -i ${CHART_DIR}/Chart.yaml
+      # Переходим в директорию сабчарта backend
+      cd ${CHART_DIR}/charts/backend
       
-      # Переходим в директорию chart
-      cd ${CHART_DIR}
-      
-      # Обновляем зависимости и пакетируем корневой chart
-      helm dependency update
-      helm package . -d ../ --version $VERSION
+      # Пакетируем сабчарт backend отдельно
+      helm package . -d ../../../ --version $VERSION
       
       # Возвращаемся в корневую директорию
-      cd ..
+      cd ../../../
       
       # Проверяем что файл создался
       ls -la *.tgz
-      echo "Chart packaged: sausage-store-${VERSION}.tgz"
+      echo "Backend chart packaged: backend-${VERSION}.tgz"
       
-      # Загружаем в Nexus
-      echo "Uploading chart to Nexus..."
+      # Загружаем backend chart в Nexus
+      echo "Uploading backend chart to Nexus..."
       curl -v -u ${NEXUS_REPO_USER}:${NEXUS_REPO_PASS} \
         ${HELM_REPO_URL} \
-        --upload-file sausage-store-${VERSION}.tgz
+        --upload-file backend-${VERSION}.tgz
 
-      echo "Chart uploaded successfully!"
+      echo "Backend chart uploaded successfully!"
   artifacts:
     paths:
-      - sausage-store-${VERSION}.tgz
+      - backend-${VERSION}.tgz
     expire_in: 1 week
   only:
     changes:
-      - sausage-store-chart/**/*
+      - sausage-store-chart/charts/backend/**/*
       - backend/**/*
 
 deploy-backend:
@@ -129,7 +137,7 @@ deploy-backend:
   when: manual
   needs: ["package-and-upload-backend"]
   before_script:
-    - apk add --no-cache gettext
+    - apk add --no-cache gettext kubectl
     - mkdir -p ~/.kube/
     - echo "$KUBECONFIG" > ~/.kube/config
     - export KUBECONFIG=~/.kube/config
@@ -146,8 +154,11 @@ deploy-backend:
     - echo "Available backend chart versions:"
     - helm search repo nexus/backend --versions | head -10
 
-    - helm upgrade --install sausage-backend nexus/backend \
+    - |
+      helm upgrade --install sausage-backend nexus/backend \
         --version $VERSION \
+        --set image.repository="${CI_REGISTRY_IMAGE}/sausage-backend" \
+        --set image.tag="$VERSION" \
         --set secrets.springDatasourceUrl="${SPRING_DATASOURCE_URL}" \
         --set secrets.postgresUser="${PSQLUSER}" \
         --set secrets.postgresPassword="${PSQLPASSWORD}" \
@@ -156,7 +167,6 @@ deploy-backend:
         --set secrets.mongoHost="${MONGO_HOST}" \
         --set secrets.mongoDbName="${MONGO_DBNAME}" \
         --namespace std-ext-010-34 \
-        --create-namespace \
         --wait \
         --timeout 5m
 
@@ -177,10 +187,15 @@ telegram-notification-backend:
       MESSAGE="✅ std-ext-010-34 задеплоил backend версии $VERSION через Helm
 
       📦 Образ: ${CI_REGISTRY_IMAGE}/sausage-backend:$VERSION
-      📊 Chart: nexus/sausage-store:$VERSION
+      📊 Chart: nexus/backend:$VERSION
       🚀 Pipeline: $CI_PIPELINE_URL
       🎯 Namespace: std-ext-010-34
       🔌 NodePort: 30081"
+
+      echo "=== TELEGRAM MESSAGE CONTENT ==="
+      echo "$MESSAGE"
+      echo "=== END MESSAGE ==="
+      
     - |
       curl -X POST -H "Content-type: application/json" \
         --data "{\"chat_id\": \"$CHAT_ID\", \"text\": \"$MESSAGE\"}" \

@@ -1,0 +1,7 @@
+---
+apiVersion: v2
+name: backend-report
+description: Sausage Store Backend Report Service
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

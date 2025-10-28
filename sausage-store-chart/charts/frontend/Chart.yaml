@@ -1,0 +1,7 @@
+---
+apiVersion: v2
+name: frontend
+description: Sausage Store Frontend Service
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

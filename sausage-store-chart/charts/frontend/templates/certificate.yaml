@@ -1,0 +1,25 @@
+{{- if .Values.certificate.enabled }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.certificate.secretName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+    app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
+    app.kubernetes.io/managed-by: "{{ .Release.Service }}"
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: sausage-store
+spec:
+  secretName: {{ .Values.certificate.secretName }}
+  issuerRef:
+    name: {{ .Values.certificate.issuerName }}
+    kind: {{ .Values.certificate.issuerKind }}
+  dnsNames:
+    {{- range .Values.certificate.dnsNames }}
+    - {{ . }}
+    {{- end }}
+{{- end }}
