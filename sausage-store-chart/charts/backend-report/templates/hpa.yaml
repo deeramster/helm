@@ -1,14 +1,14 @@
-{{- if .Values.hpa.enabled }}
+{{- if (index .Values "backend-report" "hpa" "enabled") }}
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: backend-report-hpa-{{ .Release.Name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
   labels:
     app.kubernetes.io/name: backend-report
     app.kubernetes.io/instance: "{{ .Release.Name }}"
-    app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
+    app.kubernetes.io/version: "{{ index .Values "backend-report" "image" "tag" }}"
     app.kubernetes.io/managed-by: "{{ .Release.Service }}"
     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
     app.kubernetes.io/component: backend-report
@@ -17,14 +17,14 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: backend-report-{{ .Release.Name }}
-  minReplicas: {{ .Values.hpa.minReplicas }}
-  maxReplicas: {{ .Values.hpa.maxReplicas }}
+    name: backend-report
+  minReplicas: {{ index .Values "backend-report" "hpa" "minReplicas" }}
+  maxReplicas: {{ index .Values "backend-report" "hpa" "maxReplicas" }}
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: {{ .Values.hpa.targetCPUUtilizationPercentage }}
+          averageUtilization: {{ index .Values "backend-report" "hpa" "targetCPUUtilizationPercentage" }}
 {{- end }}

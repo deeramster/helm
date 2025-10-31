@@ -3,25 +3,25 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
   labels:
     app.kubernetes.io/name: backend
     app.kubernetes.io/instance: "{{ .Release.Name }}"
-    app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
+    app.kubernetes.io/version: "{{ .Values.backend.image.tag }}"
     app.kubernetes.io/managed-by: "{{ .Release.Service }}"
     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
     app.kubernetes.io/component: backend
     app.kubernetes.io/part-of: sausage-store
-    env: "{{ .Values.environment }}"
+    env: "{{ .Values.global.environment }}"
 spec:
-  replicas: {{ .Values.replicaCount }}
-  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  replicas: {{ .Values.backend.replicaCount }}
+  revisionHistoryLimit: {{ .Values.backend.revisionHistoryLimit }}
   strategy:
-    type: {{ .Values.strategy.type }}
-    {{- if eq .Values.strategy.type "RollingUpdate" }}
+    type: {{ .Values.backend.strategy.type }}
+    {{- if eq .Values.backend.strategy.type "RollingUpdate" }}
     rollingUpdate:
-      maxUnavailable: {{ .Values.strategy.rollingUpdate.maxUnavailable }}
-      maxSurge: {{ .Values.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.backend.strategy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.backend.strategy.rollingUpdate.maxSurge }}
     {{- end }}
   selector:
     matchLabels:
@@ -32,15 +32,15 @@ spec:
       labels:
         app.kubernetes.io/name: backend
         app.kubernetes.io/instance: "{{ .Release.Name }}"
-        app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
+        app.kubernetes.io/version: "{{ .Values.backend.image.tag }}"
         app.kubernetes.io/component: backend
         app.kubernetes.io/part-of: sausage-store
-        env: "{{ .Values.environment }}"
+        env: "{{ .Values.global.environment }}"
     spec:
       containers:
         - name: backend
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           env:
             - name: SPRING_DATASOURCE_URL
               valueFrom:
@@ -81,11 +81,11 @@ spec:
               value: "/var/www-data/htdocs"
           ports:
             - name: http
-              containerPort: {{ .Values.service.targetPort }}
+              containerPort: {{ .Values.backend.service.targetPort }}
               protocol: TCP
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-      {{- with .Values.imagePullSecrets }}
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+      {{- with .Values.global.registry.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}

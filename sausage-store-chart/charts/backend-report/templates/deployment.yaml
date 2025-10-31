@@ -3,19 +3,19 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend-report
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
   labels:
     app.kubernetes.io/name: backend-report
     app.kubernetes.io/instance: "{{ .Release.Name }}"
-    app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
+    app.kubernetes.io/version: "{{ index .Values "backend-report" "image" "tag" }}"
     app.kubernetes.io/managed-by: "{{ .Release.Service }}"
     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
     app.kubernetes.io/component: backend-report
     app.kubernetes.io/part-of: sausage-store
-    env: "{{ .Values.environment }}"
+    env: "{{ .Values.global.environment }}"
 spec:
-  replicas: {{ .Values.replicaCount }}
-  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  replicas: {{ index .Values "backend-report" "replicaCount" }}
+  revisionHistoryLimit: {{ index .Values "backend-report" "revisionHistoryLimit" }}
   selector:
     matchLabels:
       app.kubernetes.io/name: backend-report
@@ -25,35 +25,35 @@ spec:
       labels:
         app.kubernetes.io/name: backend-report
         app.kubernetes.io/instance: "{{ .Release.Name }}"
-        app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
+        app.kubernetes.io/version: "{{ index .Values "backend-report" "image" "tag" }}"
         app.kubernetes.io/component: backend-report
         app.kubernetes.io/part-of: sausage-store
-        env: "{{ .Values.environment }}"
+        env: "{{ .Values.global.environment }}"
     spec:
-      {{- with .Values.affinity }}
+      {{- with (index .Values "backend-report" "affinity") }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
         - name: backend-report
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ index .Values "backend-report" "image" "repository" }}:{{ index .Values "backend-report" "image" "tag" }}"
+          imagePullPolicy: {{ index .Values "backend-report" "image" "pullPolicy" }}
           env:
             - name: VERSION
-              value: "{{ .Chart.AppVersion }}"
+              value: "{{ index .Values "backend-report" "image" "tag" }}"
             - name: PORT
-              value: {{ .Values.env.port | quote }}
+              value: {{ index .Values "backend-report" "env" "port" | quote }}
             - name: REPORTS_MONGODB_URI
-              value: "mongodb://{{ .Values.mongo.user }}:{{ .Values.mongo.password }}@{{ .Values.mongo.host }}:{{ .Values.mongo.port }}/{{ .Values.mongo.dbname }}?tls=true&tlsInsecure=true"
+              value: "mongodb://{{ index .Values "backend-report" "mongo" "user" }}:{{ index .Values "backend-report" "mongo" "password" }}@{{ index .Values "backend-report" "mongo" "host" }}:{{ index .Values "backend-report" "mongo" "port" }}/{{ index .Values "backend-report" "mongo" "dbname" }}?tls=true&tlsInsecure=true"
             - name: DB
-              value: {{ .Values.env.db | quote }}
+              value: {{ index .Values "backend-report" "env" "db" | quote }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.targetPort }}
+              containerPort: {{ index .Values "backend-report" "service" "targetPort" }}
               protocol: TCP
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-      {{- with .Values.imagePullSecrets }}
+            {{- toYaml (index .Values "backend-report" "resources") | nindent 12 }}
+      {{- with .Values.global.registry.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}

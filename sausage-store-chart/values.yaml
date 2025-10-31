@@ -1,0 +1,187 @@
+---
+# Глобальные настройки
+global:
+  namespace: std-ext-010-34
+  environment: production
+  registry:
+    url: ""
+    imagePullSecrets:
+      - name: docker-config-secret
+
+# Backend настройки
+backend:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: NodePort
+    port: 8080
+    targetPort: 8080
+    nodePort: 30081
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 20%
+  
+  revisionHistoryLimit: 12
+  
+  secrets:
+    springDatasourceUrl: ""
+    postgresUser: ""
+    postgresPassword: ""
+    mongoUser: ""
+    mongoPassword: ""
+    mongoHost: ""
+    mongoDbName: ""
+  
+  vpa:
+    enabled: true
+    updateMode: "Off"
+    minAllowed:
+      cpu: 50m
+      memory: 64Mi
+    maxAllowed:
+      cpu: 1000m
+      memory: 1Gi
+
+# Backend Report настройки
+backend-report:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: NodePort
+    port: 8080
+    targetPort: 8080
+    nodePort: 30082
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  revisionHistoryLimit: 12
+  
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - backend-report
+            topologyKey: kubernetes.io/hostname
+  
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 75
+  
+  env:
+    port: "8080"
+    db: ""
+  
+  mongo:
+    user: ""
+    password: ""
+    host: ""
+    dbname: ""
+    port: "27018"
+
+# Frontend настройки
+frontend:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: NodePort
+    port: 80
+    targetPort: 80
+    nodePort: 30080
+  
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/issuer: "letsencrypt-prod"
+    hosts:
+      - host: alimov-iskander-34.k8s.praktikum-services.tech
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: frontend-tls
+        hosts:
+          - alimov-iskander-34.k8s.praktikum-services.tech
+  
+  certificate:
+    enabled: false
+    secretName: frontend-tls
+    issuerName: letsencrypt-prod
+    issuerKind: Issuer
+    dnsNames:
+      - alimov-iskander-34.k8s.praktikum-services.tech
+  
+  issuer:
+    enabled: false
+    name: letsencrypt-prod
+    email: your-email@example.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+  
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  
+  revisionHistoryLimit: 12
+  
+  nginxConfig:
+    defaultConf: |
+      server {
+        listen 80;
+
+        location / {
+          root   /usr/share/nginx/html;
+          index  index.html;
+          try_files $uri $uri/ /index.html;
+        }
+
+        location /api {
+            proxy_pass http://backend:8080;
+        }
+      }
