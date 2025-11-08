@@ -1,29 +1,29 @@
-{{- if .Values.frontend.ingress.enabled }}
+{{- if .Values.ingress.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: frontend-{{ .Release.Name }}
-  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: frontend
     app.kubernetes.io/instance: "{{ .Release.Name }}"
-    app.kubernetes.io/version: "{{ .Values.frontend.image.tag }}"
+    app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
     app.kubernetes.io/managed-by: "{{ .Release.Service }}"
     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
     app.kubernetes.io/component: frontend
     app.kubernetes.io/part-of: sausage-store
-  {{- with .Values.frontend.ingress.annotations }}
+  {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- if .Values.frontend.ingress.className }}
-  ingressClassName: {{ .Values.frontend.ingress.className }}
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
   {{- end }}
-  {{- if .Values.frontend.ingress.tls }}
+  {{- if .Values.ingress.tls }}
   tls:
-    {{- range .Values.frontend.ingress.tls }}
+    {{- range .Values.ingress.tls }}
     - hosts:
         {{- range .hosts }}
         - {{ . | quote }}
@@ -32,7 +32,7 @@ spec:
     {{- end }}
   {{- end }}
   rules:
-    {{- range .Values.frontend.ingress.hosts }}
+    {{- range .Values.ingress.hosts }}
     - host: {{ .host | quote }}
       http:
         paths:

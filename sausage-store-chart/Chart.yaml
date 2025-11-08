@@ -2,21 +2,18 @@
 apiVersion: v2
 type: application
 name: sausage-store
-description: Sausage Store Helm Chart - Umbrella chart for all services
+description: Sausage Store Helm Chart
 
-version: 1.0.0
-appVersion: "1.0.0"
+version: 0.1.0
+appVersion: "0.1.0"
 
 dependencies:
   - name: backend
-    version: "*"
+    version: 0.1.0
     repository: "file://charts/backend"
-    condition: backend.enabled
   - name: frontend
-    version: "*"
+    version: 0.1.0
     repository: "file://charts/frontend"
-    condition: frontend.enabled
   - name: backend-report
-    version: "*"
+    version: 0.1.0
     repository: "file://charts/backend-report"
-    condition: backend-report.enabled
