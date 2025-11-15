@@ -1,0 +1,27 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: prometheus
+  annotations:
+    cert-manager.io/issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - "{{ .Release.Namespace }}-monitoring.k8s.praktikum-services.tech"
+      secretName: prometheus-tls
+  rules:
+  - host: "{{ .Release.Namespace }}-monitoring.k8s.praktikum-services.tech"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus
+            port:
+              number: 9090
