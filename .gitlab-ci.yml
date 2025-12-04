@@ -1,15 +1,15 @@
 stages:
   - module-pipelines
 
-frontend:
-  stage: module-pipelines
-  trigger:
-    include:
-      - local: /frontend/.gitlab-ci.yml
-    strategy: depend
-  only:
-    changes:
-      - frontend/**/*
+# frontend:
+#   stage: module-pipelines
+#   trigger:
+#     include:
+#       - local: /frontend/.gitlab-ci.yml
+#     strategy: depend
+#   only:
+#     changes:
+#       - frontend/**/*
 
 backend:
   stage: module-pipelines
@@ -21,12 +21,12 @@ backend:
     changes:
       - backend/**/*
 
-backend-report:
+monitoring-tools:
   stage: module-pipelines
   trigger:
     include:
-      - local: /backend-report/.gitlab-ci.yml
+      - local: /monitoring-tools/.gitlab-ci.yml
     strategy: depend
   only:
     changes:
-      - backend-report/**/*
+      - monitoring-tools/**/*
