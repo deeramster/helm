@@ -1,0 +1,194 @@
+variables:
+  VERSION: 1.0.${CI_PIPELINE_ID}
+  BACKEND_PORT: 8081
+
+stages:
+  - build
+  - test
+  - release
+  - package-chart
+  - deploy
+  - notify
+
+build-backend:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    entrypoint: [""]
+  script:
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}/backend"
+      --dockerfile "${CI_PROJECT_DIR}/backend/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}/momo-backend:$CI_COMMIT_SHA"
+      --build-arg VERSION=$VERSION
+      --cache=true
+  only:
+    changes:
+      - backend/**/*
+
+backend-test:
+  stage: test
+  image: golang:1.17
+  script:
+    - cd backend
+    - go test ./cmd/api/app
+  needs:
+    - build-backend
+  only:
+    changes:
+      - backend/**/*
+
+sonarqube-backend-sast:
+  stage: test
+  image: sonarsource/sonar-scanner-cli:latest
+  script:
+    - cd backend
+    - >
+      sonar-scanner
+      -Dsonar.qualitygate.wait=true
+      -Dsonar.projectName=${SONARGO}
+      -Dsonar.projectKey=${SONARGO}
+      -Dsonar.sources=.
+      -Dsonar.host.url=${SONARQUBE_URL}
+      -Dsonar.login=${SONARGOL}
+  needs:
+    - build-backend
+  allow_failure: true
+  only:
+    changes:
+      - backend/**/*
+
+release-backend:
+  variables:
+    GIT_STRATEGY: none
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [""]
+  cache: []
+  stage: release
+  script:
+    - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - crane tag $CI_REGISTRY_IMAGE/momo-backend:$CI_COMMIT_SHA $VERSION
+  needs: ["build-backend"]
+  only:
+    changes:
+      - backend/**/*
+
+package-and-upload-backend:
+  stage: package-chart
+  image: alpine/helm:latest
+  needs: ["release-backend"]
+  before_script:
+    - apk add --no-cache curl gettext yq
+  script:
+    - |
+      CHART_DIR="momo-store-chart"
+      
+      # Обновляем версии в сабчарте backend
+      yq eval ".version = \"$VERSION\"" -i ${CHART_DIR}/charts/backend/Chart.yaml
+      yq eval ".appVersion = \"$VERSION\"" -i ${CHART_DIR}/charts/backend/Chart.yaml
+      
+      # Обновляем все значения в values.yaml
+      yq eval ".image.repository = \"${CI_REGISTRY_IMAGE}/momo-backend\"" -i ${CHART_DIR}/charts/backend/values.yaml
+      yq eval ".image.tag = \"$VERSION\"" -i ${CHART_DIR}/charts/backend/values.yaml
+      yq eval ".image.pullPolicy = \"IfNotPresent\"" -i ${CHART_DIR}/charts/backend/values.yaml
+      
+      # Обновляем порт приложения
+      yq eval ".service.port = ${BACKEND_PORT}" -i ${CHART_DIR}/charts/backend/values.yaml
+      yq eval ".service.targetPort = ${BACKEND_PORT}" -i ${CHART_DIR}/charts/backend/values.yaml
+      
+      # Обновляем imagePullSecrets
+      yq eval '.imagePullSecrets[0].name = "docker-config-secret"' -i ${CHART_DIR}/charts/backend/values.yaml
+      
+      echo "=== Updated backend values.yaml ==="
+      cat ${CHART_DIR}/charts/backend/values.yaml
+      echo "========================================="
+      
+      # Переходим в директорию сабчарта backend
+      cd ${CHART_DIR}/charts/backend
+      
+      # Пакетируем сабчарт backend отдельно
+      helm package . -d ../../../ --version $VERSION
+      
+      # Возвращаемся в корневую директорию
+      cd ../../../
+      
+      # Проверяем что файл создался
+      ls -la *.tgz
+      echo "Backend chart packaged: backend-${VERSION}.tgz"
+      
+      # Загружаем backend chart в Nexus
+      echo "Uploading backend chart to Nexus..."
+      curl -v -u ${NEXUS_REPO_USER}:${NEXUS_REPO_PASS} \
+        ${HELM_REPO_URL} \
+        --upload-file backend-${VERSION}.tgz
+
+      echo "Backend chart uploaded successfully!"
+  artifacts:
+    paths:
+      - backend-${VERSION}.tgz
+    expire_in: 1 week
+  only:
+    changes:
+      - momo-store-chart/charts/backend/**/*
+      - backend/**/*
+
+deploy-backend:
+  stage: deploy
+  image: alpine/helm:latest
+  needs: ["package-and-upload-backend"]
+  when: manual
+  before_script:
+    - apk add --no-cache curl
+    - mkdir -p ~/.kube/
+    - echo "$KUBECONFIG" >> ~/.kube/config
+    - export KUBECONFIG=~/.kube/config
+  script:
+    - |
+      helm repo add nexus ${HELM_REPO_URL} --username ${NEXUS_REPO_USER} --password ${NEXUS_REPO_PASS}
+      helm repo update
+      
+      helm upgrade --install momo-backend nexus/backend \
+        --version $VERSION \
+        --namespace ${KUBE_NAMESPACE} \
+        --create-namespace \
+        --atomic \
+        --timeout 5m
+      
+      echo "Backend deployed successfully!"
+  after_script:
+    - rm -f ~/.kube/config
+  only:
+    changes:
+      - momo-store-chart/charts/backend/**/*
+      - backend/**/*
+
+telegram-notification-backend:
+  stage: notify
+  needs: ["deploy-backend"]
+  script:
+    - |
+      MESSAGE="✅ Momo Store Backend версии $VERSION успешно задеплоен
+
+      📦 Образ: ${CI_REGISTRY_IMAGE}/momo-backend:$VERSION
+      📊 Chart: nexus/backend:$VERSION
+      🚀 Pipeline: $CI_PIPELINE_URL
+      🎯 Namespace: ${KUBE_NAMESPACE}
+      🔌 Port: ${BACKEND_PORT}
+      📈 Endpoints:
+         - /products - Список пельменей
+         - /categories - Категории
+         - /orders - Создание заказа
+         - /health - Healthcheck
+         - /metrics - Prometheus метрики"
+
+      echo "=== TELEGRAM MESSAGE CONTENT ==="
+      echo "$MESSAGE"
+      echo "=== END MESSAGE ==="
+      
+    - |
+      curl -X POST -H "Content-type: application/json" \
+        --data "{\"chat_id\": \"$CHAT_ID\", \"text\": \"$MESSAGE\"}" \
+        https://api.telegram.org/bot$BOT_TOKEN/sendMessage
+  rules:
+    - if: $CI_COMMIT_MESSAGE =~ /send notification/
