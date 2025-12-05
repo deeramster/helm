@@ -1,7 +1,0 @@
----
-yandex_cloud_services:
-  - service: managed-kubernetes
-    serviceId: catf47lfp5fiu9i56vt3
-    folderId: b1gcamcu5s0a3b0h590c
-    bearer_token: ${YANDEX_BEARER_TOKEN}
-    scrape_interval: 60s
