@@ -1,0 +1,3 @@
+---
+telegram_bot_token: "${BOT_TOKEN}"
+telegram_chat_id: "${CHAT_ID}"

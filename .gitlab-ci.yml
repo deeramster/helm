@@ -1,0 +1,32 @@
+stages:
+  - module-pipelines
+
+frontend:
+  stage: module-pipelines
+  trigger:
+    include:
+      - local: /frontend/.gitlab-ci.yml
+    strategy: depend
+  only:
+    changes:
+      - frontend/**/*
+
+backend:
+  stage: module-pipelines
+  trigger:
+    include:
+      - local: /backend/.gitlab-ci.yml
+    strategy: depend
+  only:
+    changes:
+      - backend/**/*
+
+monitoring-tools:
+  stage: module-pipelines
+  trigger:
+    include:
+      - local: /monitoring-tools/.gitlab-ci.yml
+    strategy: depend
+  only:
+    changes:
+      - monitoring-tools/**/*

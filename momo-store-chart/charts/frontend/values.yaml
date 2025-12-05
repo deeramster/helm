@@ -1,0 +1,53 @@
+---
+replicaCount: 1
+
+image:
+  repository: ""
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets:
+  - name: docker-config-secret
+
+nameOverride: ""
+fullnameOverride: ""
+
+environment: production
+
+service:
+  type: NodePort
+  port: 8080
+  targetPort: 8080
+  nodePort: 30080
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: momo.app.alimov.me
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: frontend-tls
+      hosts:
+        - momo.app.alimov.me
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+revisionHistoryLimit: 12
+
+nginxConfig:
+  enabled: true
+  mainConfig: |
+    # будет загружено из ConfigMap
+  siteConfig: |
+    # будет загружено из ConfigMap

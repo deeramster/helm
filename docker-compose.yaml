@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  backend:
+    container_name: momo-store-backend
+    build: ./backend
+    networks:
+      - momo-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8081/health",
+        ]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+  frontend:
+    container_name: momo-store-frontend
+    build: ./frontend
+    ports:
+      - "80:8080"
+    depends_on:
+      - backend
+    networks:
+      - momo-network
+
+networks:
+  momo-network:
+    driver: bridge

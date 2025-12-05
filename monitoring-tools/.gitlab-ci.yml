@@ -1,0 +1,226 @@
+stages:
+  - validate
+  - test
+  - deploy
+
+variables:
+  NAMESPACE: ${NAMESPACE}
+  CHART_BASE_PATH: ${CI_PROJECT_DIR}/monitoring-tools
+
+.validate-template: &validate-template
+  image: alpine/helm:latest
+  before_script:
+    - apk add --no-cache gettext kubectl curl jq yamllint
+    - helm plugin install https://github.com/helm-unittest/helm-unittest || true
+  cache:
+    key: helm-plugins
+    paths:
+      - /root/.local/share/helm/plugins/
+
+.deploy-template: &deploy-template
+  stage: deploy
+  image: alpine/helm:latest
+  before_script:
+    - apk add --no-cache gettext kubectl
+    - mkdir -p ~/.kube/
+    - echo "$KUBECONFIG" >> ~/.kube/config
+    - export KUBECONFIG=~/.kube/config
+    - kubectl version --client
+  after_script:
+    - rm -f ~/.kube/config
+
+lint-prometheus:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "🔍 Linting Prometheus chart..."
+    - helm lint ${CHART_BASE_PATH}/prometheus
+    - echo "✅ Prometheus chart linting passed"
+
+lint-alertmanager:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "🔍 Linting Alertmanager chart..."
+    - helm lint ${CHART_BASE_PATH}/alertmanager
+    - echo "✅ Alertmanager chart linting passed"
+
+lint-grafana:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "🔍 Linting Grafana chart..."
+    - helm lint ${CHART_BASE_PATH}/grafana
+    - echo "✅ Grafana chart linting passed"
+
+template-prometheus:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "🔧 Testing Prometheus template rendering..."
+    - helm template prometheus ${CHART_BASE_PATH}/prometheus --debug --dry-run
+    - echo "✅ Prometheus template rendering successful"
+
+template-alertmanager:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "🔧 Testing Alertmanager template rendering..."
+    - helm template alertmanager ${CHART_BASE_PATH}/alertmanager --debug --dry-run
+    - echo "✅ Alertmanager template rendering successful"
+
+template-grafana:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "🔧 Testing Grafana template rendering..."
+    - helm template grafana ${CHART_BASE_PATH}/grafana --debug --dry-run
+    - echo "✅ Grafana template rendering successful"
+
+validate-values-prometheus:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "📋 Validating Prometheus values.yaml..."
+    - |
+      if [ -f "${CHART_BASE_PATH}/prometheus/values.yaml" ]; then
+        yamllint "${CHART_BASE_PATH}/prometheus/values.yaml" && echo "✅ Prometheus values.yaml is valid YAML"
+      else
+        echo "❌ Prometheus values.yaml not found"
+        exit 1
+      fi
+
+validate-values-alertmanager:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "📋 Validating Alertmanager values.yaml..."
+    - |
+      if [ -f "${CHART_BASE_PATH}/alertmanager/values.yaml" ]; then
+        yamllint "${CHART_BASE_PATH}/alertmanager/values.yaml" && echo "✅ Alertmanager values.yaml is valid YAML"
+      else
+        echo "❌ Alertmanager values.yaml not found"
+        exit 1
+      fi
+
+validate-values-grafana:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "📋 Validating Grafana values.yaml..."
+    - |
+      if [ -f "${CHART_BASE_PATH}/grafana/values.yaml" ]; then
+        yamllint "${CHART_BASE_PATH}/grafana/values.yaml" && echo "✅ Grafana values.yaml is valid YAML"
+      else
+        echo "❌ Grafana values.yaml not found"
+        exit 1
+      fi
+
+validate-dashboards:
+  <<: *validate-template
+  stage: validate
+  script:
+    - echo "📊 Validating Grafana dashboards..."
+    - |
+      if [ -f "${CHART_BASE_PATH}/grafana/dashboards/Kubernetes___Compute_Resources___Pod.json" ]; then
+        # Проверка JSON с помощью jq
+        jq empty "${CHART_BASE_PATH}/grafana/dashboards/Kubernetes___Compute_Resources___Pod.json"
+        echo "✅ Grafana dashboards JSON is valid"
+      else
+        echo "⚠️ No dashboards found or validation skipped"
+      fi
+
+dependency-check:
+  <<: *validate-template
+  stage: test
+  script:
+    - echo "📦 Checking chart dependencies..."
+    - |
+      for chart in prometheus alertmanager grafana; do
+        if [ -f "${CHART_BASE_PATH}/${chart}/Chart.yaml" ]; then
+          echo "Checking dependencies for ${chart}..."
+          helm dependency list ${CHART_BASE_PATH}/${chart} || true
+        fi
+      done
+
+deploy-prometheus:
+  <<: *deploy-template
+  environment:
+    name: production/prometheus
+  when: manual
+  dependencies:
+    - lint-prometheus
+    - template-prometheus
+    - validate-values-prometheus
+  script:
+    - echo "🚀 Deploying Prometheus..."
+    - envsubst < "${CHART_BASE_PATH}/prometheus/values.yaml" > "${CHART_BASE_PATH}/prometheus/values-${CI_JOB_NAME}.yaml"
+    - |
+      helm upgrade --install prometheus ${CHART_BASE_PATH}/prometheus \
+        --namespace ${NAMESPACE} \
+        --values ${CHART_BASE_PATH}/prometheus/values-${CI_JOB_NAME}.yaml \
+        --timeout 10m 
+        
+    - echo "✅ Prometheus deployed successfully"
+
+deploy-alertmanager:
+  <<: *deploy-template
+  environment:
+    name: production/alertmanager
+  when: manual
+  dependencies:
+    - lint-alertmanager
+    - template-alertmanager
+    - validate-values-alertmanager
+  script:
+    - echo "🚀 Deploying Alertmanager..."
+    - envsubst < "${CHART_BASE_PATH}/alertmanager/values.yaml" > "${CHART_BASE_PATH}/alertmanager/values-${CI_JOB_NAME}.yaml"
+    - |
+      helm upgrade --atomic --install alertmanager ${CHART_BASE_PATH}/alertmanager \
+        --namespace ${NAMESPACE} \
+        --values ${CHART_BASE_PATH}/alertmanager/values-${CI_JOB_NAME}.yaml \
+        --timeout 10m \
+        --wait
+    - echo "✅ Alertmanager deployed successfully"
+
+deploy-grafana:
+  <<: *deploy-template
+  environment:
+    name: production/grafana
+  when: manual
+  dependencies:
+    - lint-grafana
+    - template-grafana
+    - validate-values-grafana
+    - validate-dashboards
+  script:
+    - echo "🚀 Deploying Grafana..."
+    - |
+      helm upgrade --atomic --install grafana ${CHART_BASE_PATH}/grafana \
+        --namespace ${NAMESPACE} \
+        --timeout 10m \
+        --wait
+    - echo "✅ Grafana deployed successfully"
+
+verify-deployment:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  when: manual
+  dependencies:
+    - deploy-prometheus
+    - deploy-alertmanager
+    - deploy-grafana
+  before_script:
+    - mkdir -p ~/.kube/
+    - echo "$KUBECONFIG" >> ~/.kube/config
+    - export KUBECONFIG=~/.kube/config
+  script:
+    - echo "🔍 Verifying deployments..."
+    - |
+      for app in prometheus alertmanager grafana; do
+        echo "Checking ${app}..."
+        kubectl wait --for=condition=available --timeout=300s deployment/${app} -n ${NAMESPACE}
+        echo "✅ ${app} is ready"
+      done
+  after_script:
+    - rm -f ~/.kube/config
