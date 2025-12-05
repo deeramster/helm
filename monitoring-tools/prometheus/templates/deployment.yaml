@@ -40,15 +40,26 @@ spec:
           - --config.file=/etc/prometheus/prometheus.yml
           - --web.enable-lifecycle
           - --log.level=debug
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9090
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
         ports:
           - containerPort: 9090
         volumeMounts:
-        {{- range $path, $bytes := .Files.Glob ( printf "rules/**.yaml") }}
-        {{- $name := base $path }}
         - name: prometheus-rules
-          mountPath: {{- printf "/config/%s" $name | indent 1 }}
-          subPath: {{- printf "%s" $name | indent 1 }}
-        {{- end }}
+          mountPath: /config
+          readOnly: true
         - name: timezone-moscow
           mountPath: /etc/localtime
           readOnly: true

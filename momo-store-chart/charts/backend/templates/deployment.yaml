@@ -20,8 +20,18 @@ spec:
     matchLabels:
       app.kubernetes.io/name: backend
       app.kubernetes.io/instance: "{{ .Release.Name }}"
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
   template:
     metadata:
+      annotations:
+        # Prometheus аннотации для сбора метрик
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/metrics"
       labels:
         app.kubernetes.io/name: backend
         app.kubernetes.io/instance: "{{ .Release.Name }}"
@@ -29,6 +39,8 @@ spec:
         app.kubernetes.io/component: backend
         app.kubernetes.io/part-of: momo-store
         env: "{{ .Values.environment }}"
+        # Метка для селектора Prometheus
+        app: backend
     spec:
       {{- with .Values.affinity }}
       affinity:
@@ -47,6 +59,23 @@ spec:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
+          # Проверки здоровья
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.imagePullSecrets }}

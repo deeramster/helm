@@ -156,11 +156,11 @@ deploy-prometheus:
     - echo "🚀 Deploying Prometheus..."
     - envsubst < "${CHART_BASE_PATH}/prometheus/values.yaml" > "${CHART_BASE_PATH}/prometheus/values-${CI_JOB_NAME}.yaml"
     - |
-      helm upgrade --atomic --install prometheus ${CHART_BASE_PATH}/prometheus \
+      helm upgrade --install prometheus ${CHART_BASE_PATH}/prometheus \
         --namespace ${NAMESPACE} \
         --values ${CHART_BASE_PATH}/prometheus/values-${CI_JOB_NAME}.yaml \
-        --timeout 10m \
-        --wait
+        --timeout 10m 
+        
     - echo "✅ Prometheus deployed successfully"
 
 deploy-alertmanager:

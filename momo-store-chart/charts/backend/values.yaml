@@ -39,7 +39,7 @@ affinity:
               - key: app.kubernetes.io/name
                 operator: In
                 values:
-                  - backend-report
+                  - backend
           topologyKey: kubernetes.io/hostname
 
 hpa:
@@ -47,6 +47,14 @@ hpa:
   minReplicas: 2
   maxReplicas: 5
   targetCPUUtilizationPercentage: 75
+
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: false  
+    interval: 30s
+    scrapeTimeout: 10s
 
 env:
   port: "8081"

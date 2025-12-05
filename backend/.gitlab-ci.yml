@@ -9,6 +9,7 @@ stages:
   - package-chart
   - deploy
   - notify
+  - monitoring-check
 
 build-backend:
   stage: build
@@ -100,6 +101,9 @@ package-and-upload-backend:
       # Обновляем imagePullSecrets
       yq eval '.imagePullSecrets[0].name = "docker-config-secret"' -i ${CHART_DIR}/charts/backend/values.yaml
       
+      # Включаем мониторинг
+      yq eval ".monitoring.enabled = true" -i ${CHART_DIR}/charts/backend/values.yaml
+      
       echo "=== Updated backend values.yaml ==="
       cat ${CHART_DIR}/charts/backend/values.yaml
       echo "========================================="
@@ -139,7 +143,7 @@ deploy-backend:
   needs: ["package-and-upload-backend"]
   when: manual
   before_script:
-    - apk add --no-cache curl
+    - apk add --no-cache curl kubectl
     - mkdir -p ~/.kube/
     - echo "$KUBECONFIG" >> ~/.kube/config
     - export KUBECONFIG=~/.kube/config
@@ -153,9 +157,12 @@ deploy-backend:
         --namespace ${KUBE_NAMESPACE} \
         --create-namespace \
         --atomic \
-        --timeout 5m
+        --timeout 5m \
+        --wait
       
       echo "Backend deployed successfully!"
+      echo "Waiting for pods to be ready..."
+      kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=backend -n ${KUBE_NAMESPACE} --timeout=300s
   after_script:
     - rm -f ~/.kube/config
   only:

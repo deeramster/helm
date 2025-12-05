@@ -9,19 +9,56 @@ metadata:
 data:
   alertmanager.yml: |
     global:
-      resolve_timeout: 1m
+      resolve_timeout: 5m
     
     route:
-      group_wait: 10s
-      group_interval: 30s
-      repeat_interval: 30m
       receiver: "telegram"
+      group_by: ['alertname', 'severity', 'component']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 4h
+      
       routes:
+        # Критические алерты - отправляем сразу
         - receiver: "telegram"
+          match:
+            severity: critical
           group_wait: 10s
-          match_re:
-            severity: critical|warning
+          group_interval: 2m
+          repeat_interval: 30m
           continue: true
+        
+        # Warning алерты - группируем
+        - receiver: "telegram"
+          match:
+            severity: warning
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 2h
+          continue: true
+        
+        # Info алерты - только днем
+        - receiver: "telegram"
+          match:
+            severity: info
+          group_wait: 5m
+          group_interval: 10m
+          repeat_interval: 12h
+    
+    inhibit_rules:
+      # Не отправляем warning если есть critical для того же компонента
+      - source_match:
+          severity: critical
+        target_match:
+          severity: warning
+        equal: ['component', 'alertname']
+      
+      # Не отправляем медленные ответы если сервис упал
+      - source_match:
+          alertname: BackendDown
+        target_match_re:
+          alertname: Backend.*ResponseTime
+        equal: ['component']
     
     receivers:
       - name: "telegram"
@@ -29,4 +66,21 @@ data:
           - send_resolved: true
             bot_token: '{{ .Values.telegram_bot_token }}'
             chat_id: {{ .Values.telegram_chat_id }}
-            message: "{{ "{{" }} range .Alerts {{ "}}" }}{{ "{{" }} .Annotations.description {{ "}}" }}\n{{ "{{" }} end {{ "}}" }}"
+            parse_mode: "HTML"
+            message: |
+              {{ "{{" }} if eq .Status "firing" {{ "}}" }}🔥 <b>ALERT FIRING</b>{{ "{{" }} else {{ "}}" }}✅ <b>RESOLVED</b>{{ "{{" }} end {{ "}}" }}
+              
+              {{ "{{" }} range .Alerts {{ "}}" }}
+              <b>Alert:</b> {{ "{{" }} .Labels.alertname {{ "}}" }}
+              <b>Severity:</b> {{ "{{" }} .Labels.severity {{ "}}" }}
+              <b>Component:</b> {{ "{{" }} .Labels.component {{ "}}" }}
+              <b>Project:</b> {{ "{{" }} .Labels.project {{ "}}" }}
+              
+              <b>Summary:</b> {{ "{{" }} .Annotations.summary {{ "}}" }}
+              <b>Description:</b> {{ "{{" }} .Annotations.description {{ "}}" }}
+              
+              <b>Started:</b> {{ "{{" }} .StartsAt.Format "2006-01-02 15:04:05" {{ "}}" }}
+              {{ "{{" }} if .EndsAt {{ "}}" }}<b>Ended:</b> {{ "{{" }} .EndsAt.Format "2006-01-02 15:04:05" {{ "}}" }}{{ "{{" }} end {{ "}}" }}
+              
+              ━━━━━━━━━━━━━━━━━━━━
+              {{ "{{" }} end {{ "}}" }}

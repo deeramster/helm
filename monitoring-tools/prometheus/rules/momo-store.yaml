@@ -1,0 +1,170 @@
+groups:
+  - name: Momo Store Backend Rules
+    interval: 30s
+    rules:
+    # Алерт на падение бэкенда
+    - alert: BackendDown
+      expr: up{app="backend"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Backend сервис недоступен"
+        description: "Backend pod {{ $labels.kubernetes_pod_name }} в namespace {{ $labels.kubernetes_namespace }} недоступен более 1 минуты."
+
+    # Алерт на высокий процент ошибок
+    - alert: BackendHighErrorRate
+      expr: |
+        (
+          sum(rate(requests_count{job="kubernetes-pods", app="backend"}[5m]))
+          -
+          sum(rate(requests_count{job="kubernetes-pods", app="backend", status=~"2.."}[5m]))
+        )
+        /
+        sum(rate(requests_count{job="kubernetes-pods", app="backend"}[5m]))
+        * 100 > 5
+      for: 3m
+      labels:
+        severity: warning
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Высокий процент ошибок в Backend"
+        description: "Более 5% запросов к backend возвращают ошибки в течение 3 минут. Текущее значение: {{ $value | humanizePercentage }}"
+
+    # Алерт на медленные запросы (P95)
+    - alert: BackendSlowResponseTime
+      expr: |
+        histogram_quantile(0.95, 
+          sum(rate(response_timing_ms_bucket{job="kubernetes-pods", app="backend"}[5m])) by (le, handler)
+        ) > 500
+      for: 5m
+      labels:
+        severity: warning
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Медленные ответы Backend (P95 > 500ms)"
+        description: "95-й перцентиль времени ответа для {{ $labels.handler }} превышает 500ms в течение 5 минут. Текущее значение: {{ $value | humanizeDuration }}"
+
+    # Алерт на медленные запросы (P99)
+    - alert: BackendVerySlow ResponseTime
+      expr: |
+        histogram_quantile(0.99, 
+          sum(rate(response_timing_ms_bucket{job="kubernetes-pods", app="backend"}[5m])) by (le, handler)
+        ) > 1000
+      for: 3m
+      labels:
+        severity: critical
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Очень медленные ответы Backend (P99 > 1s)"
+        description: "99-й перцентиль времени ответа для {{ $labels.handler }} превышает 1 секунду в течение 3 минут. Текущее значение: {{ $value | humanizeDuration }}"
+
+    # Алерт на низкий RPS
+    - alert: BackendLowTraffic
+      expr: |
+        sum(rate(requests_count{job="kubernetes-pods", app="backend"}[5m])) < 0.1
+      for: 10m
+      labels:
+        severity: warning
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Низкий трафик на Backend"
+        description: "Количество запросов к backend менее 0.1 RPS в течение 10 минут. Возможно проблемы с доступностью."
+
+    # Алерт на рост количества заказов (для мониторинга бизнес-метрик)
+    - alert: BackendHighOrderRate
+      expr: |
+        rate(orders_count{job="kubernetes-pods", app="backend"}[5m]) > 10
+      for: 2m
+      labels:
+        severity: info
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Высокая частота создания заказов"
+        description: "Частота создания заказов превышает 10/сек в течение 2 минут. Текущее значение: {{ $value | humanize }} заказов/сек"
+
+    # Алерт на отсутствие заказов (возможная проблема)
+    - alert: BackendNoOrders
+      expr: |
+        rate(orders_count{job="kubernetes-pods", app="backend"}[15m]) == 0
+      for: 15m
+      labels:
+        severity: warning
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Отсутствуют заказы"
+        description: "Не было создано ни одного заказа за последние 15 минут."
+
+    # Алерт на высокое использование CPU
+    - alert: BackendHighCPU
+      expr: |
+        sum(rate(container_cpu_usage_seconds_total{pod=~".*backend.*"}[5m])) by (pod) * 100 > 80
+      for: 5m
+      labels:
+        severity: warning
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Высокое использование CPU"
+        description: "Pod {{ $labels.pod }} использует более 80% CPU в течение 5 минут."
+
+    # Алерт на высокое использование памяти
+    - alert: BackendHighMemory
+      expr: |
+        sum(container_memory_working_set_bytes{pod=~".*backend.*"}) by (pod) / 
+        sum(container_spec_memory_limit_bytes{pod=~".*backend.*"}) by (pod) * 100 > 80
+      for: 5m
+      labels:
+        severity: warning
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Высокое использование памяти"
+        description: "Pod {{ $labels.pod }} использует более 80% доступной памяти в течение 5 минут."
+
+    # Алерт на частые рестарты подов
+    - alert: BackendFrequentRestarts
+      expr: |
+        rate(kube_pod_container_status_restarts_total{pod=~".*backend.*"}[15m]) * 900 > 3
+      for: 5m
+      labels:
+        severity: critical
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Частые рестарты Backend"
+        description: "Pod {{ $labels.pod }} перезапускался более 3 раз за последние 15 минут."
+
+    # Алерт на недоступность health endpoint
+    - alert: BackendHealthCheckFailing
+      expr: |
+        probe_success{job="kubernetes-pods", app="backend"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Health check не проходит"
+        description: "Health check endpoint недоступен для {{ $labels.kubernetes_pod_name }} более 2 минут."
+
+    # Алерт на популярность товаров (для аналитики)
+    - alert: BackendPopularProduct
+      expr: |
+        sum(rate(dumplings_listing_count{job="kubernetes-pods", app="backend"}[10m])) by (id) > 100
+      for: 5m
+      labels:
+        severity: info
+        project: "momo_store"
+        component: "backend"
+      annotations:
+        summary: "Популярный товар"
+        description: "Товар ID {{ $labels.id }} просматривается более 100 раз в минуту в течение 5 минут."
